@@ -1,0 +1,66 @@
+pip install cryptography
+
+
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+import os
+import base64
+
+class AESFileEncryptor:
+    def __init__(self, password, salt=None):
+        self.password = password.encode()
+        self.salt = salt or os.urandom(16)
+        self.backend = default_backend()
+        self.key = self._derive_key()
+
+    def _derive_key(self):
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=self.salt,
+            iterations=100000,
+            backend=self.backend
+        )
+        key = kdf.derive(self.password)
+        return key
+
+    def encrypt_file(self, input_file, output_file):
+        with open(input_file, 'rb') as f:
+            data = f.read()
+
+        iv = os.urandom(16)
+        cipher = Cipher(algorithms.AES(self.key), modes.CFB(iv), backend=self.backend)
+        encryptor = cipher.encryptor()
+
+        encrypted_data = encryptor.update(data) + encryptor.finalize()
+
+        with open(output_file, 'wb') as f:
+            f.write(self.salt + iv + encrypted_data)
+
+    def decrypt_file(self, input_file, output_file):
+        with open(input_file, 'rb') as f:
+            salt = f.read(16)
+            iv = f.read(16)
+            encrypted_data = f.read()
+
+        cipher = Cipher(algorithms.AES(self.key), modes.CFB(iv), backend=self.backend)
+        decryptor = cipher.decryptor()
+
+        decrypted_data = decryptor.update(encrypted_data) + decryptor.finalize()
+
+        with open(output_file, 'wb') as f:
+            f.write(decrypted_data)
+
+# Example usage
+if __name__ == "__main__":
+    password = "your_secure_password"
+    encryptor = AESFileEncryptor(password)
+
+    # Encrypt a file
+    encryptor.encrypt_file('example.txt', 'example.txt.enc')
+
+    # Decrypt a file
+    encryptor.decrypt_file('example.txt.enc', 'example_decrypted.txt')
